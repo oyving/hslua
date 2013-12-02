@@ -1,5 +1,5 @@
 
-{-# LANGUAGE ForeignFunctionInterface, TypeSynonymInstances, FlexibleInstances, ScopedTypeVariables #-}
+{-# LANGUAGE ForeignFunctionInterface, TypeSynonymInstances, FlexibleInstances, ScopedTypeVariables, DeriveDataTypeable #-}
 {-# OPTIONS_GHC -Wall -fno-warn-name-shadowing -fno-warn-unused-do-bind -fno-warn-unused-binds #-}
 -- |
 -- Module      : Scripting.Lua
@@ -209,9 +209,11 @@ import Foreign.Marshal.Alloc
 import Data.IORef
 import qualified Foreign.Storable as F
 import qualified Data.List as L
+import Data.Typeable (Typeable)
 import Data.Maybe
 
 #include "lua.h"
+#include "ntrljmp.h"
 
 lua_version_num :: Int
 lua_version_num = #const LUA_VERSION_NUM
@@ -328,6 +330,19 @@ instance Enum PCALLRET where
     toEnum 4 = PCERRMEM
     toEnum 5 = PCERRERR
     toEnum n = error $ "Cannot convert (" ++ show n ++ ") to PCCALLRET"
+
+
+-- Use constants from C header to avoid magic numbers
+longjmp_error :: CInt
+longjmp_error = #const HSLUA_LONGJMP_ERROR
+
+longjmp_arg_error :: CInt
+longjmp_arg_error = #const HSLUA_LONGJMP_ARG_ERROR
+
+data LuaException = ArgError Int String
+      deriving (Show, Typeable)
+
+instance Exception LuaException
 
 -- | See @LUA_MULTRET@ in Lua Reference Manual.
 multret :: Int
@@ -1112,7 +1127,7 @@ instance (StackValue a,LuaImport b) => LuaImport (a -> b) where
                 t <- ltype l narg
                 exp <- typename l (valuetype (fromJust arg))
                 got <- typename l t
-                luaimportargerror narg (exp ++ " expected, got " ++ got) (x undefined) l
+                throwIO (ArgError  narg (exp ++ " expected, got " ++ got))
 
 foreign import ccall "wrapper" mkWrapper :: LuaCFunction -> IO (FunPtr LuaCFunction)
 
@@ -1130,7 +1145,10 @@ newcfunction = mkWrapper . luaimport
 -- Any Haskell exception will be converted to a string and returned
 -- as Lua error.
 luaimport :: LuaImport a => a -> LuaCFunction
-luaimport a l = luaimport' 1 a l `catch` (\(e :: IOError) -> push l (show e) >> return (-1))
+luaimport a l = luaimport' 1 a l `catches` [Handler handleIOException, Handler handleException]
+  where
+    handleIOException (e :: IOException) = push l (show e) >> return longjmp_error
+    handleException (ArgError narg msg)  = push l narg >> push l msg >> return longjmp_arg_error
 
 -- | Free function pointer created with @newcfunction@.
 freecfunction :: FunPtr LuaCFunction -> IO ()
