@@ -180,17 +180,17 @@ module Scripting.Lua
     registerrawhsfunction
 )
 where
-import Prelude hiding (concat, catch)
+import Control.Exception
+import Control.Monad
+import Data.IORef
+import Data.Maybe
 import Foreign.C
+import Foreign.Marshal.Alloc
 import Foreign.Ptr
 import Foreign.StablePtr
-import Control.Monad
-import Control.Exception
-import Foreign.Marshal.Alloc
-import Data.IORef
-import qualified Foreign.Storable as F
+import Prelude hiding (concat, catch)
 import qualified Data.List as L
-import Data.Maybe
+import qualified Foreign.Storable as F
 
 #include "lua.h"
 
