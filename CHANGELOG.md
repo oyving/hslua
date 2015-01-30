@@ -1,5 +1,9 @@
 ## Changelog
 
+### 0.4.0
+
+* `pushbytestring` and `tobytestring` added. ByteString instance of `StackValue` is implemented.
+
 ### 0.3.14
 
 * Pkgconf-based setup removed. Cabal is now using `extra-libraries` to link with Lua.

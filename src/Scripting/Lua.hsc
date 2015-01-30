@@ -119,6 +119,7 @@ module Scripting.Lua
     pushnil,
     pushnumber,
     pushstring,
+    pushbytestring,
     pushthread,
     pushvalue,
     --pushvfstring,
@@ -149,6 +150,7 @@ module Scripting.Lua
     tonumber,
     topointer,
     tostring,
+    tobytestring,
     tothread,
     touserdata,
     ltype,
@@ -182,6 +184,8 @@ module Scripting.Lua
 where
 import Control.Exception
 import Control.Monad
+import qualified Data.ByteString as B
+import qualified Data.ByteString.Unsafe as B
 import Data.IORef
 import Data.Maybe
 import Foreign.C
@@ -501,6 +505,13 @@ tostring l n = alloca $ \lenPtr -> do
     len <- F.peek lenPtr
     peekCStringLen (cstr, fromIntegral len)
 
+-- | See @lua_tostring@ in Lua Reference Manual.
+tobytestring :: LuaState -> Int -> IO B.ByteString
+tobytestring l n = alloca $ \lenPtr -> do
+    cstr <- c_lua_tolstring l (fromIntegral n) lenPtr
+    len <- F.peek lenPtr
+    B.packCStringLen (cstr, fromIntegral len)
+
 -- | See @lua_tothread@ in Lua Reference Manual.
 tothread :: LuaState -> Int -> IO LuaState
 tothread l n = c_lua_tothread l (fromIntegral n)
@@ -710,6 +721,10 @@ pushnumber = c_lua_pushnumber
 pushstring :: LuaState -> String -> IO ()
 pushstring l s = withCStringLen s $ \(s,z) -> c_lua_pushlstring l s (fromIntegral z)
 
+pushbytestring :: LuaState -> B.ByteString -> IO ()
+pushbytestring l s = B.unsafeUseAsCString s $
+                       \cstr -> c_lua_pushlstring l cstr (fromIntegral $ B.length s)
+
 -- | See @lua_pushthread@ in Lua Reference Manual.
 pushthread :: LuaState -> IO Bool
 pushthread l = liftM (/=0) (c_lua_pushthread l)
@@ -896,6 +911,10 @@ instance StackValue () where
     peek l n = maybepeek l n isnil (\_l _n -> return ())
     valuetype _ = TNIL
 
+instance StackValue B.ByteString where
+    push l x = pushbytestring l x
+    peek l n = maybepeek l n isstring tobytestring
+    valuetype _ = TSTRING
 
 {-
 -- | Argument wrapper, to be used in connection with @callproc@ and @callfunc@.
